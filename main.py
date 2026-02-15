@@ -21,39 +21,52 @@ def get_docs_service():
     creds = service_account.Credentials.from_service_account_info(info)
     return build('docs', 'v1', credentials=creds)
 
-@app.route('/get-link', methods=['GET'])
-def get_link():
+@app.route('/get-data', methods=['GET'])
+def get_data():
     service = get_docs_service()
     doc = service.documents().get(documentId=DOCUMENT_ID).execute()
-    
     content = doc.get('body').get('content')
+    
     readings = []
+    all_tags = set()
 
-    # Simple Parsing Logic
     for element in content:
         if 'paragraph' in element:
-            text = ""
-            for run in element['paragraph']['elements']:
-                if 'textRun' in run:
-                    text += run['textRun']['content']
+            # We need to collect the text and the link separately
+            full_text = ""
+            extracted_link = None
             
-            # Look for lines like: [Title](URL) #Theme
-            # Match pattern: URL inside () and themes starting with #
-            url_match = re.search(r'\((https?://[^\)]+)\)', text)
-            if url_match:
-                url = url_match.group(1)
-                themes = re.findall(r'#(\w+)', text.lower())
-                readings.append({"url": url, "themes": themes})
+            for run in element['paragraph']['elements']:
+                text_run = run.get('textRun', {})
+                text_content = text_run.get('content', "")
+                full_text += text_content
+                
+                # Check if this specific run of text has a link attached
+                # Most often, the link is on the 'Title' part before the '|'
+                style = text_run.get('textStyle', {})
+                if 'link' in style:
+                    extracted_link = style['link'].get('url')
 
-    # Filter by vibe if requested
-    vibe = request.args.get('vibe')
-    if vibe:
-        readings = [r for r in readings if vibe.lower() in r['themes']]
+            if "|" in full_text:
+                parts = full_text.split("|")
+                title = parts[0].strip()
+                
+                # Extract tags from the second half (after the |)
+                tags = re.findall(r'#(\w+)', parts[1].lower())
+                for t in tags: 
+                    all_tags.add(t)
 
-    if not readings:
-        return jsonify({"error": "No matching readings found"}), 404
+                if title:
+                    readings.append({
+                        "title": title,
+                        "url": extracted_link, # This is the URL pulled from the Title style
+                        "themes": tags
+                    })
 
-    return jsonify(random.choice(readings))
+    return jsonify({
+        "readings": readings,
+        "tags": sorted(list(all_tags))
+    })
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
