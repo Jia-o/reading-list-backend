@@ -50,16 +50,16 @@ def get_data():
             if "|" in full_text:
                 parts = full_text.split("|")
                 title = parts[0].strip()
+                tag_section = parts[1].replace('\n', ' ').strip()
+                tags = re.findall(r'#(\w+)', tag_section.lower())
                 
-                # Extract tags from the second half (after the |)
-                tags = re.findall(r'#(\w+)', parts[1].lower())
                 for t in tags: 
                     all_tags.add(t)
 
                 if title:
                     readings.append({
                         "title": title,
-                        "url": extracted_link, # This is the URL pulled from the Title style
+                        "url": extracted_link,
                         "themes": tags
                     })
 
